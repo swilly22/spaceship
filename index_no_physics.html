@@ -1,0 +1,237 @@
+<html>
+	<head>
+		<title></title>
+		<style>
+			body { margin: 0; }
+			canvas { width: 100%; height: 100% }
+		</style>
+	</head>
+	<body>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r75/three.js"></script>
+		<script src="http://threejs.org/examples/js/controls/OrbitControls.js"></script>
+		<script src="spaceship.js"></script>
+		
+
+		<script>
+			var scene;
+			var camera;
+			var renderer;
+			var controls;
+			var roads = [];
+			var textures = [];
+
+			var stirLeft, stirRight, speedUp, slowDown = false;
+			var spaceshipSpeed = 0;
+			const topSpeed = 1;
+			const maxSpaceshipRotation = Math.PI/4;
+			var spaceship = null;
+			var startfield = null;
+			
+			// TODO: return a promise
+			function loadTextures() {
+				// instantiate a loader
+				var loader = new THREE.TextureLoader();
+
+				var texturesImages = ['metal_floor_1.jpg', 'metal_floor_3.jpg'];
+				
+				for(var i = 0; i < texturesImages.length; i++) {
+					loader.load(texturesImages[i],
+						function ( texture ) {
+							textures.push(texture);
+						}
+					);
+				}
+			}
+
+			function init() {			
+				scene = new THREE.Scene();
+				camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+				
+				controls = new THREE.OrbitControls( camera, renderer.domElement );
+				controls.enablePan = false;
+
+				// var axisHelper = new THREE.AxisHelper( 5 );
+				// scene.add( axisHelper );
+
+				var light = new THREE.HemisphereLight( 0xffffff, 0x080820, 1 );
+				scene.add( light );
+
+				startfield = createStarField();
+                scene.add(startfield);
+
+				camera.position.set(0, 0.4, 2);
+				camera.lookAt(new THREE.Vector3(0,0 -1));
+			}
+
+			function loadSpaceShip() {
+				var loader = new THREE.ObjectLoader();
+
+				// assuming we loaded a JSON structure from elsewhere
+				spaceship = loader.parse( model );
+
+				spaceship.scale.set(0.01, 0.01, 0.01);
+				spaceship.rotateY(Math.PI);
+				spaceship.rotation.z = 0;
+				spaceship.position.set(0, 0.1, 0);
+				scene.add( spaceship );
+
+				camera.position.set(spaceship.position.x, spaceship.position.y + 0.2, spaceship.position.z + 0.5);
+
+				// spaceship.add(camera);
+				document.addEventListener("keydown", onKeyDown);
+				document.addEventListener("keyup", onKeyUp);
+			}
+
+			function createStarField() {
+			    // create the geometry sphere
+			    var geometry = new THREE.SphereGeometry(90, 32, 32);
+			    // create the material, using a texture of startfield
+			    var material = new THREE.MeshBasicMaterial();
+			    material.map = THREE.ImageUtils.loadTexture('galaxy_starfield.png');
+			    material.side = THREE.BackSide;
+			    // create the mesh based on geometry and material
+			    var mesh = new THREE.Mesh(geometry, material);
+			    return mesh;
+			}
+
+			function onKeyDown(e) {
+				const left = 37;
+				const up = 38;
+				const right = 39;
+				const down = 40;
+
+				switch(e.keyCode) {
+					case left:
+
+					stirLeft = true;
+					break;
+					
+					case right:
+					stirRight = true;
+					break;
+
+					case up:				
+					speedUp = true;
+					break;
+
+					case down:
+					slowDown = true;
+					break;
+				}
+			}
+
+			function onKeyUp(e) {
+				const left = 37;
+				const up = 38;
+				const right = 39;
+				const down = 40;
+
+				switch(e.keyCode) {
+					case left:					
+					stirLeft = false;
+					break;
+					
+					case right:
+					stirRight = false;
+					break;
+
+					case up:				
+					speedUp = false;
+					break;
+
+					case down:
+					slowDown = false;
+					break;
+				}
+			}
+
+			function buildLevel() {
+
+				var totalHeight = 0;
+
+				for(var i = 0; i < 15; i++) {
+					var width = Math.random() * 0.8 + 0.2;
+					var height = Math.random() * 5 + 1.5;
+					var gap = 0;
+					var xOffset = - 1 + Math.random() * 2;
+					
+					if (roads.length > 0) {
+						gap = Math.random() * 0.5 + 0.3;
+					}
+
+					road = createPlane(width, height, textures[0]);
+
+					road.translateZ(-height/2 - totalHeight - gap);
+					road.translateX(xOffset);
+
+					road.rotateOnAxis(new THREE.Vector3(1,0,0), Math.PI * -0.5);
+					scene.add(road);
+					
+					roads.push(road);
+					totalHeight += height + gap;
+				}
+
+				roads[0].position.x = 0;
+			}
+
+			function createPlane(width, height, texture) {				
+				var geometry = new THREE.PlaneGeometry(
+					width,
+					height,
+					1,
+					1);
+
+				// var material = new THREE.MeshBasicMaterial({color: 0xffffff, side: THREE.DoubleSide, map: texture});
+
+				var material = new THREE.MeshBasicMaterial({color: 0xffffff, side: THREE.DoubleSide, map: texture});
+
+				var plane = new THREE.Mesh( geometry, material );
+
+				return plane;
+			}
+
+			function render() {
+			    requestAnimationFrame( render );
+			    controls.update();
+			    if(spaceship !== null) {
+			    	updateShip();
+				}
+			    renderer.render( scene, camera );
+			}
+
+			function updateShip() {
+				if(stirLeft) {
+					spaceship.position.x -= 0.01;
+					spaceship.rotation.z = Math.min(maxSpaceshipRotation, spaceship.rotation.z + Math.PI / 135);
+
+				} else if(stirRight) {
+					spaceship.position.x += 0.01;
+					spaceship.rotation.z = Math.max(-maxSpaceshipRotation, spaceship.rotation.z - Math.PI / 135);
+				}
+
+				if(speedUp) {
+					spaceshipSpeed = Math.min(topSpeed, spaceshipSpeed + 0.001);
+				} else if(slowDown) {
+					spaceshipSpeed = Math.max(0.003, spaceshipSpeed - 0.002);
+				}
+
+				spaceship.position.z -= spaceshipSpeed;
+
+				camera.position.z = spaceship.position.z + 0.5;
+				camera.lookAt(new THREE.Vector3(0, 0, camera.position.z -1));
+
+			}
+
+			loadTextures();
+			init();
+			loadSpaceShip();
+			// buildLevel();
+			setTimeout(buildLevel, 2000);
+			render();
+		</script>
+	</body>
+</html>

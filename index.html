@@ -1,0 +1,316 @@
+<html>
+	<head>
+		<title></title>
+		<style>
+			body { margin: 0; }
+			canvas { width: 100%; height: 100% }
+		</style>
+	</head>
+	<body>
+		
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r75/three.js"></script>
+		<script src="http://threejs.org/examples/js/controls/OrbitControls.js"></script>
+		<script src="spaceship.js"></script>
+		<script type="text/javascript" src="../physi.js"></script>
+		
+
+		<script>
+			Physijs.scripts.worker = 'physijs_worker.js';
+			Physijs.scripts.ammo = 'ammo.js';
+
+			var scene;
+			var camera;
+			var renderer;
+			var controls;
+			var roads = [];
+			var textures = [];
+
+			var stirLeft, stirRight, speedUp, slowDown = false;
+			var spaceshipSpeed = 0;
+			const topSpeed = 1;
+			const maxSpaceshipRotation = Math.PI/4;
+			var spaceship = null;
+			var startfield = null;
+			var block = null;
+			
+			function loadTextures() {
+				var p = new Promise(function(resolve, reject) {
+					// instantiate a loader
+					var loader = new THREE.TextureLoader();
+
+					var texturesImages = ['metal_floor_1.jpg', 'metal_floor_3.jpg'];
+					
+					for(var i = 0; i < texturesImages.length; i++) {
+						loader.load(texturesImages[i],
+							function ( texture ) {
+								textures.push(texture);
+								if(textures.length === texturesImages.length) {
+									resolve();
+								}
+							}
+						);
+					}					
+				});
+
+				return p;
+			}
+
+			function init() {			
+				scene = new Physijs.Scene({ fixedTimeStep: 1 / 120 });
+				scene.setGravity(new THREE.Vector3( 0, -30, 0 ));
+				scene.addEventListener('update', function() {
+					scene.simulate( undefined, 1 );
+					}
+				);
+
+				camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+				
+				controls = new THREE.OrbitControls( camera, renderer.domElement );
+				controls.enablePan = false;
+
+				// var axisHelper = new THREE.AxisHelper( 5 );
+				// scene.add( axisHelper );
+
+				var light = new THREE.HemisphereLight( 0xffffff, 0x080820, 1 );
+				scene.add( light );
+
+				startfield = createStarField();
+                scene.add(startfield);
+
+				camera.position.set(0, 0.4, 2);
+				camera.lookAt(new THREE.Vector3(0,0 -1));
+			}
+
+			function loadSpaceShip() {
+				var loader = new THREE.ObjectLoader();
+
+				// assuming we loaded a JSON structure from elsewhere
+				spaceship = loader.parse( model );
+
+				spaceship.scale.set(0.01, 0.01, 0.01);
+				spaceship.rotateY(Math.PI);
+				spaceship.rotation.z = 0;
+				spaceship.position.set(0, 0.1, -0.5);
+				scene.add( spaceship );
+
+				camera.position.set(spaceship.position.x, spaceship.position.y + 0.2, spaceship.position.z + 0.5);
+
+				var block_geometry = new THREE.BoxGeometry( 0.2, 0.2, 0.2 );
+				var block_material = Physijs.createMaterial(
+					new THREE.MeshLambertMaterial({transparent: true, opacity: 0}),
+					.4, // medium friction
+					.4 // medium restitution
+				);
+
+				block = new Physijs.BoxMesh( block_geometry, block_material );
+				block.position = spaceship.position;
+				block.position.z = spaceship.position.z - 0.01;
+				block.position.y = 0.3;
+
+				// block.position.y = 0.4;
+				block.__dirtyPosition = true;
+			    // block.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+    			// block.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+				scene.add(block);
+			}
+
+			function createStarField() {
+			    // create the geometry sphere
+			    var geometry = new THREE.SphereGeometry(90, 32, 32);
+			    // create the material, using a texture of startfield
+			    var material = new THREE.MeshBasicMaterial();
+			    material.map = THREE.ImageUtils.loadTexture('galaxy_starfield.png');
+			    material.side = THREE.BackSide;
+			    // create the mesh based on geometry and material
+			    var mesh = new THREE.Mesh(geometry, material);
+			    return mesh;
+			}
+
+			function onKeyDown(e) {
+				const left = 37;
+				const up = 38;
+				const right = 39;
+				const down = 40;
+
+				switch(e.keyCode) {
+					case left:
+
+					stirLeft = true;
+					break;
+					
+					case right:
+					stirRight = true;
+					break;
+
+					case up:				
+					speedUp = true;
+					break;
+
+					case down:
+					slowDown = true;
+					break;
+				}
+			}
+
+			function onKeyUp(e) {
+				const left = 37;
+				const up = 38;
+				const right = 39;
+				const down = 40;
+				const space = 32;
+
+				switch(e.keyCode) {
+					case left:					
+					stirLeft = false;
+					break;
+					
+					case right:
+					stirRight = false;
+					break;
+
+					case up:				
+					speedUp = false;
+					break;
+
+					case down:
+					slowDown = false;
+					break;
+
+					case space:
+					jump();
+					break;
+				}
+			}
+
+			function jump() {
+				var f = new THREE.Vector3(0,1,0);
+
+				f.multiplyScalar(6.5);
+				block.setLinearVelocity(f);
+			}
+
+			function buildLevel() {
+
+				var totalHeight = 0;
+
+				for(var i = 0; i < 15; i++) {
+					var width = Math.random() * 0.8 + 0.2;
+					var height = Math.random() * 5 + 1.5;
+					var xOffset = - 1 + Math.random() * 2;
+					var gap = 0;
+					
+					if (roads.length > 0) {
+						gap = Math.random() * 0.5 + 0.3;
+					}
+
+					road = createPlane(width, height, textures[0]);
+
+					road.translateZ(-height/2 - totalHeight - gap);
+					road.translateX(xOffset);
+
+					road.rotateOnAxis(new THREE.Vector3(1,0,0), Math.PI * -0.5);
+					scene.add(road);
+					
+					roads.push(road);
+					totalHeight += height + gap;
+				}
+
+				roads[0].position.x = 0;
+				roads[0].__dirtyPosition = true;
+			}
+
+			function createPlane(width, height, texture) {
+
+				var material = Physijs.createMaterial(
+				new THREE.MeshBasicMaterial({color: 0xffffff, side: THREE.DoubleSide, map: texture}),
+				.9, // high friction
+				.2 // low restitution
+				);
+
+				var plane = new Physijs.BoxMesh(
+					new THREE.BoxGeometry(width, height, 0.001),
+					material,
+					0, // mass
+					{ restitution: .2, friction: .8 }
+					);
+
+				return plane;				
+			}
+
+			function registerKeyboardEvents() {
+				document.addEventListener("keydown", onKeyDown);
+				document.addEventListener("keyup", onKeyUp);
+			}
+
+			function updateShip() {
+				if(stirLeft) {
+					spaceship.position.x -= 0.01;
+					spaceship.rotation.z = Math.min(maxSpaceshipRotation, spaceship.rotation.z + Math.PI / 135);
+
+				} else if(stirRight) {
+					spaceship.position.x += 0.01;
+					spaceship.rotation.z = Math.max(-maxSpaceshipRotation, spaceship.rotation.z - Math.PI / 135);
+				} else {
+					// Restore rotation
+					if(Math.abs(spaceship.rotation.z) > Math.PI / 90 ) {
+						if(spaceship.rotation.z > 0) {
+							spaceship.rotation.z -= Math.PI / 90
+						} else {
+							spaceship.rotation.z += Math.PI / 90
+						}
+					}
+				}
+
+				if(speedUp) {
+					spaceshipSpeed = Math.min(topSpeed, spaceshipSpeed + 0.001);
+				} else if(slowDown) {
+					spaceshipSpeed = Math.max(0.003, spaceshipSpeed - 0.002);
+				}
+
+				spaceship.position.z -= spaceshipSpeed;
+
+				// camera.position.z = spaceship.position.z + 0.5;
+				camera.position.z = spaceship.position.z + 0.5 + spaceshipSpeed*4;
+
+				camera.lookAt(new THREE.Vector3(0, 0, camera.position.z -1));
+
+				// Sync with Physics
+				spaceship.position.y = block.position.y;
+
+				block.position.z = spaceship.position.z;
+				block.position.x = spaceship.position.x;
+				block.__dirtyPosition = true;
+			}
+
+			function dead() {
+
+			}
+
+			function render() {
+			    requestAnimationFrame( render );
+			    controls.update();
+			    if(spaceship !== null) {
+			    	updateShip();
+
+			    	if(dead()) {
+			    	}
+				}
+			    renderer.render( scene, camera );
+			}
+
+			loadTextures().then(function() {
+				init();
+				buildLevel();
+				loadSpaceShip();
+				registerKeyboardEvents();
+				scene.simulate();
+				render();
+			});
+			
+		</script>
+	</body>
+</html>
